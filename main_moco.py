@@ -38,7 +38,7 @@ model_names = sorted(
 )
 
 parser = argparse.ArgumentParser(description="PyTorch ImageNet Training")
-parser.add_argument("data", metavar="DIR", help="path to dataset")
+# parser.add_argument("data", metavar="DIR", help="path to dataset")
 parser.add_argument(
     "-a",
     "--arch",
@@ -134,7 +134,7 @@ parser.add_argument(
     help="url used to set up distributed training",
 )
 parser.add_argument(
-    "--dist-backend", default="nccl", type=str, help="distributed backend"
+    "--dist-backend", default="gloo", type=str, help="distributed backend"
 )
 parser.add_argument(
     "--seed", default=None, type=int, help="seed for initializing training. "
@@ -253,7 +253,7 @@ def main_worker(gpu, ngpus_per_node, args):
         args.moco_t,
         args.mlp,
     )
-    print(model)
+    # print(model)
 
     if args.distributed:
         # For multiprocessing distributed, DistributedDataParallel constructor
@@ -515,4 +515,6 @@ def accuracy(output, target, topk=(1,)):
 
 
 if __name__ == "__main__":
+    parser.add_argument('--data', metavar='DIR', default='G:\DATA\guangzhou\TEST',
+                        help='path to dataset')
     main()
