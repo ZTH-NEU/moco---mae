@@ -50,7 +50,7 @@ parser.add_argument(
 parser.add_argument(
     "-j",
     "--workers",
-    default=32,
+    default=1,
     type=int,
     metavar="N",
     help="number of data loading workers (default: 32)",
@@ -155,7 +155,7 @@ parser.add_argument(
 )
 parser.add_argument(
     "--moco-k",
-    default=65536,
+    default=8192,
     type=int,
     help="queue size; number of negative keys (default: 65536)",
 )
@@ -374,19 +374,19 @@ def main_worker(gpu, ngpus_per_node, args):
         # train for one epoch
         train(train_loader, model, criterion, optimizer, epoch, args)
 
-        if not args.multiprocessing_distributed or (
-            args.multiprocessing_distributed and args.rank % ngpus_per_node == 0
-        ):
-            save_checkpoint(
-                {
-                    "epoch": epoch + 1,
-                    "arch": args.arch,
-                    "state_dict": model.state_dict(),
-                    "optimizer": optimizer.state_dict(),
-                },
-                is_best=False,
-                filename="checkpoint_{:04d}.pth.tar".format(epoch),
-            )
+        # if not args.multiprocessing_distributed or (
+        #     args.multiprocessing_distributed and args.rank % ngpus_per_node == 0
+        # ):
+        #     save_checkpoint(
+        #         {
+        #             "epoch": epoch + 1,
+        #             "arch": args.arch,
+        #             "state_dict": model.state_dict(),
+        #             "optimizer": optimizer.state_dict(),
+        #         },
+        #         is_best=False,
+        #         filename="checkpoint_{:04d}.pth.tar".format(epoch),
+        #     )
 
 
 def train(train_loader, model, criterion, optimizer, epoch, args):
@@ -509,7 +509,7 @@ def accuracy(output, target, topk=(1,)):
 
         res = []
         for k in topk:
-            correct_k = correct[:k].view(-1).float().sum(0, keepdim=True)
+            correct_k = correct[:k].contiguous().view(-1).float().sum(0, keepdim=True)
             res.append(correct_k.mul_(100.0 / batch_size))
         return res
 
