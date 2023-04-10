@@ -6,6 +6,7 @@
 import torch
 import torch.nn as nn
 
+import matplotlib.pyplot as plt
 
 class MoCo(nn.Module):
     """
@@ -125,6 +126,39 @@ class MoCo(nn.Module):
 
         return x_gather[idx_this]
 
+    def show_onebeach(self, im_q, im_k, pred_q, pred_k):
+        for i in range(0, len(im_q)):
+            fig = plt.figure()
+            ax1 = fig.add_subplot(221)
+            ax2 = fig.add_subplot(222)
+            ax3 = fig.add_subplot(223)
+            ax4 = fig.add_subplot(224)
+
+            q_temp = im_q[i].cpu()
+            q_temp = q_temp.transpose(0, 2)
+            ax1.imshow(q_temp.numpy())
+
+            # pred_1 = self.encoder_q.unpatchify(pred_q)
+            # pred_1 = pred_1[i].cpu()
+            # pred_1 = pred_1.transpose(0, 2)
+            # ax2.imshow(pred_1)
+
+            k_temp = im_k[i].cpu()
+            k_temp = k_temp.transpose(0, 2)
+            ax3.imshow(k_temp)
+
+            # pred_2 = self.encoder_q.unpatchify(pred_k)
+            # pred_2 = pred_2[i].cpu()
+            # pred_2 = pred_2.transpose(0, 2)
+            # ax4.imshow(pred_2)
+
+            plt.show()
+
+            if i >= 2:
+                break
+
+            # fig.savefig('./picture3/{}.jpg'.format(i))
+
     def forward(self, im_q, im_k):
         """
         Input:
@@ -169,6 +203,9 @@ class MoCo(nn.Module):
 
         # dequeue and enqueue
         self._dequeue_and_enqueue(k)
+
+        self.show_onebeach(im_q,im_k,im_q,im_k)
+
 
         return logits, labels
 
