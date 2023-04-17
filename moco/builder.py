@@ -29,8 +29,8 @@ class MoCo(nn.Module):
 
         # create the encoders
         # num_classes is the output fc dimension
-        self.encoder_q = base_encoder(num_classes=dim)
-        self.encoder_k = base_encoder(num_classes=dim)
+        self.encoder_q = base_encoder
+        self.encoder_k = base_encoder
 
         if mlp:  # hack: brute-force replacement
             dim_mlp = self.encoder_q.fc.weight.shape[1]
@@ -52,6 +52,10 @@ class MoCo(nn.Module):
         self.queue = nn.functional.normalize(self.queue, dim=0)
 
         self.register_buffer("queue_ptr", torch.zeros(1, dtype=torch.long))
+
+        # creat conv1d
+        self.conv1d_q = nn.Conv1d(50,128,kernel_size=1024,stride=1,padding=0)
+        self.conv1d_k = nn.Conv1d(50,128,kernel_size=1024,stride=1,padding=0)
 
     @torch.no_grad()
     def _momentum_update_key_encoder(self):
@@ -145,7 +149,7 @@ class MoCo(nn.Module):
 
             k_temp = im_k[i].cpu()
             k_temp = k_temp.transpose(0, 2)
-            ax3.imshow(k_temp)
+            ax3.imshow(k_temp.numpy())
 
             # pred_2 = self.encoder_q.unpatchify(pred_k)
             # pred_2 = pred_2[i].cpu()
@@ -159,7 +163,7 @@ class MoCo(nn.Module):
 
             # fig.savefig('./picture3/{}.jpg'.format(i))
 
-    def forward(self, im_q, im_k):
+    def forward(self, im_q, im_k, mask_ratio):
         """
         Input:
             im_q: a batch of query images
@@ -167,10 +171,14 @@ class MoCo(nn.Module):
         Output:
             logits, targets
         """
+        # self.show_onebeach(im_q,im_k,im_q,im_k)
 
         # compute query features
-        q = self.encoder_q(im_q)  # queries: NxC
-        q = nn.functional.normalize(q, dim=1)
+        # q = self.encoder_q(im_q)  # queries: NxC
+        q, mask_q, ids_restore_q = self.encoder_q.forward_encoder(im_q, mask_ratio)
+        q2 = self.conv1d_q(q)
+        q2 = q2.squeeze()
+        q2 = nn.functional.normalize(q2,dim=1)
 
         # compute key features
         with torch.no_grad():  # no gradient to keys
@@ -179,18 +187,21 @@ class MoCo(nn.Module):
             # shuffle for making use of BN
             im_k, idx_unshuffle = self._batch_shuffle_ddp(im_k)
 
-            k = self.encoder_k(im_k)  # keys: NxC
-            k = nn.functional.normalize(k, dim=1)
+            k, mask_k, ids_restore_k = self.encoder_k.forward_encoder(im_k,mask_ratio)  # keys: NxC
+            # k = self.encoder_k(im_k)  # keys: NxC
+        k2 = self.conv1d_k(k)
+        k2 = k2.squeeze()
+        k2 = nn.functional.normalize(k2, dim=1)
+        # undo shuffle
 
-            # undo shuffle
-            k = self._batch_unshuffle_ddp(k, idx_unshuffle)
+        k = self._batch_unshuffle_ddp(k, idx_unshuffle)
 
         # compute logits
         # Einstein sum is more intuitive
         # positive logits: Nx1
-        l_pos = torch.einsum("nc,nc->n", [q, k]).unsqueeze(-1)
+        l_pos = torch.einsum("nc,nc->n", [q2, k2]).unsqueeze(-1)
         # negative logits: NxK
-        l_neg = torch.einsum("nc,ck->nk", [q, self.queue.clone().detach()])
+        l_neg = torch.einsum("nc,ck->nk", [q2, self.queue.clone().detach()])
 
         # logits: Nx(1+K)
         logits = torch.cat([l_pos, l_neg], dim=1)
@@ -202,12 +213,17 @@ class MoCo(nn.Module):
         labels = torch.zeros(logits.shape[0], dtype=torch.long).cuda()
 
         # dequeue and enqueue
-        self._dequeue_and_enqueue(k)
+        self._dequeue_and_enqueue(k2)
 
-        self.show_onebeach(im_q,im_k,im_q,im_k)
+        pred_q = self.encoder_q.forward_decoder(q, ids_restore_q)
+        pred_k = self.encoder_k.forward_decoder(k, ids_restore_k)
 
+        loss_q = self.encoder_q.forward_loss(im_q, pred_q, mask_q)
+        loss_k = self.encoder_k.forward_loss(im_k, pred_k, mask_k)
 
-        return logits, labels
+        return logits, labels, loss_q, loss_k, pred_q, pred_k, mask_q, mask_k
+
+        # return logits, labels
 
 
 # utils

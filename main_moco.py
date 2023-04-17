@@ -30,6 +30,8 @@ import torchvision.datasets as datasets
 import torchvision.models as models
 import torchvision.transforms as transforms
 
+import models_mae
+
 
 model_names = sorted(
     name
@@ -47,6 +49,12 @@ parser.add_argument(
     choices=model_names,
     help="model architecture: " + " | ".join(model_names) + " (default: resnet50)",
 )
+parser.add_argument('--model', default='mae_vit_large_patch16', type=str, metavar='MODEL',
+                    help='Name of model to train')
+parser.add_argument('--norm_pix_loss', action='store_true',
+                    help='Use (per-patch) normalized pixels as targets for computing loss')
+parser.add_argument('--mask_ratio', default=0.75, type=float,
+                    help='Masking ratio (percentage of removed patches).')
 parser.add_argument(
     "-j",
     "--workers",
@@ -191,7 +199,6 @@ def main():
             "You may see unexpected behavior when restarting "
             "from checkpoints."
         )
-
     if args.gpu is not None:
         warnings.warn(
             "You have chosen a specific GPU. This will completely "
@@ -210,6 +217,7 @@ def main():
         args.world_size = ngpus_per_node * args.world_size
         # Use torch.multiprocessing.spawn to launch distributed processes: the
         # main_worker process function
+        print('args.gpu={}'.format(args.gpu))
         mp.spawn(main_worker, nprocs=ngpus_per_node, args=(ngpus_per_node, args))
     else:
         # Simply call main_worker function
@@ -218,6 +226,7 @@ def main():
 
 def main_worker(gpu, ngpus_per_node, args):
     args.gpu = gpu
+    print('args.gpu={}'.format(args.gpu))
 
     # suppress printing if not master
     if args.multiprocessing_distributed and args.gpu != 0:
@@ -244,9 +253,10 @@ def main_worker(gpu, ngpus_per_node, args):
             rank=args.rank,
         )
     # create model
-    print("=> creating model '{}'".format(args.arch))
+    print("=> creating model '{}'".format(args.model))
     model = moco.builder.MoCo(
-        models.__dict__[args.arch],
+        # models.__dict__[args.arch],
+        models_mae.__dict__[args.model](norm_pix_loss=args.norm_pix_loss),
         args.moco_dim,
         args.moco_k,
         args.moco_m,
@@ -414,7 +424,10 @@ def train(train_loader, model, criterion, optimizer, epoch, args):
             images[1] = images[1].cuda(args.gpu, non_blocking=True)
 
         # compute output
-        output, target = model(im_q=images[0], im_k=images[1])
+        output, target, loss_q, loss_k, pred_q, pred_k, mask_q, mask_k = model(im_q=images[0], im_k=images[1], mask_ratio= args.mask_ratio)
+        # loss1 = criterion(output, target)
+        # loss2 = loss_q
+        # loss = loss1 + loss2
         loss = criterion(output, target)
 
         # acc1/acc5 are (K+1)-way contrast classifier accuracy
